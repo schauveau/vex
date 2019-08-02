@@ -1,0 +1,6 @@
+option('enable_docs', type : 'boolean', value : false, description: 'test')
+option('enable_abc', type : 'boolean', value : false, description: 'test')
+option('tests', type : 'boolean', value : true, description: 'build the tests')
+option('blend2d_dir', type : 'string', value : '' , description: 'blend2d installation directory')
+option('gen-input-videos', type : 'boolean', value : true , description: 'use ffmpeg to generate some input videos for the tests')
+

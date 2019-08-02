@@ -1,0 +1,105 @@
+#!/bin/bash
+
+APP="$0"
+FFMPEG="ffmpeg"
+VAAPI_DEV=/dev/dri/renderD128
+
+usage () {
+  echo "Usage: $APP PRESET SIZE PIXFMT FRAMERATE OUTPUT"
+  echo "with"
+  echo "  PRESET is one of the presets defined in that script"
+  echo "  SIZE is the input video size (e.g. '1024x768')"
+  echo "  PIXFMT is the input video pixel format (e.g. 'bgra' or 'rgba')"  
+  echo "  FRAMERATE is the input video frame rate (e.g. '24' or '24/1')" 
+  echo "  OUTPUT is the output video filename"    
+}
+
+run_cmd () {
+    echo -n "CMD: " ; printf "%b " "$@" ; echo
+    exec "$@" 
+}
+
+run_ffmpeg () {
+    run_cmd ffmpeg -loglevel level+error -hide_banner -f rawvideo -vcodec rawvideo \
+            -pix_fmt "$PIXFMT" \
+            -s "$SIZE" -r "$FRAMERATE" \
+            -i - \
+            "$@" \
+            "$OUTPUT"
+}
+
+run_ffmpeg_vaapi () {
+    run_ffmpeg -vaapi_device "$VAAPI_DEV" "$@"
+}
+
+run_ffplay () {    
+    run_cmd ffplay -hide_banner -f rawvideo -vcodec rawvideo \
+            -pixel_format "$PIXFMT"  -video_size "$SIZE" \
+            -framerate "$FRAMERATE" -
+}
+
+run_mpv () {
+    IFS=x read WIDTH HEIGHT <<<"$SIZE"
+    run_cmd mpv - \
+            --demuxer=rawvideo \
+            --demuxer-rawvideo-fps="$FRAMERATE" \
+            --demuxer-rawvideo-w="$WIDTH" \
+            --demuxer-rawvideo-h="$HEIGHT" \
+            --demuxer-rawvideo-mp-format="$PIXFMT"
+}
+
+if [[ $# != 5 ]] ; then
+    usage
+    exit 1
+fi
+
+PRESET="$1"
+SIZE="$2"
+PIXFMT="$3"
+FRAMERATE="$4"
+OUTPUT="$5"
+W=iw
+H=ih
+
+# Define some aliases for the presets.
+# The idea is that those aliases represent typical use cases.
+case "$PRESET" in
+    # default: Used by some tests. Should always exist
+    default)  PRESET=x264-fast ;;
+    # preview: produce a smaller video with a fast encoding
+    preview)  PRESET=h264_vaapi ; W=iw/2 ; H=ih/2 ;;
+    # fast: full size but fast encoding
+    fast)     PRESET=h264_vaapi ;;
+    # best: a high quality output (probably slow)
+    best)     PRESET=x265-high ;;
+    # show: Display the video (no generated file)
+    show)     PRESET=mpv ;;
+esac;
+
+#
+# The real implementation of each preset. 
+#
+
+case "$PRESET" in
+    h264_vaapi)
+        run_ffmpeg_vaapi -vf "hwupload,scale_vaapi=w=$W:h=$H:format=nv12" -vcodec h264_vaapi ;;
+    hevc_vaapi)
+        run_ffmpeg_vaapi -vf "hwupload,scale_vaapi=w=$W:h=$H:format=nv12" -vcodec hevc_vaapi ;;
+    x264-fast)
+        run_ffmpeg -vcodec libx264 -preset ultrafast -crf 10 ;;
+    x264-high)
+        run_ffmpeg -vcodec libx264  ;;
+    x265-high)
+        run_ffmpeg -vcodec libx265  ;;
+    ffplay)
+        run_ffplay ;;
+    mpv)
+        run_mpv ;;
+esac
+
+echo "Error: Unsupported preset '$PRESET' in $0" >&2  
+exit 1
+
+
+
+
